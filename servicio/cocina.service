@@ -1,0 +1,12 @@
+[Unit]
+Description=Cocina de la casa: recetas y despensa (API JSON + SQLite)
+After=network-online.target
+
+[Service]
+WorkingDirectory=%h/proyectos/casa/cocina
+ExecStart=/usr/bin/python3 servidor.py
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
