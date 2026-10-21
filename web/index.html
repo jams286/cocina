@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#fbf4ea">
+  <title>Cocina</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header class="cabecera">
+    <h1>Cocina</h1>
+    <nav class="pestanas" aria-label="Secciones">
+      <a href="#/" data-vista="recetas">Recetas</a>
+      <a href="#/despensa" data-vista="despensa">Despensa</a>
+    </nav>
+  </header>
+
+  <main class="pagina">
+    <!-- ---------- Lista de recetas ---------- -->
+    <section id="vista-recetas" hidden>
+      <div class="barra-busqueda">
+        <input type="search" id="buscar" placeholder="Buscar receta…" autocomplete="off" aria-label="Buscar receta">
+        <a class="boton-principal" href="#/nueva">+ Nueva</a>
+      </div>
+      <p class="vacio" id="recetas-vacio" hidden></p>
+      <ul class="recetas" id="recetas"></ul>
+    </section>
+
+    <!-- ---------- Una receta ---------- -->
+    <section id="vista-receta" hidden>
+      <a class="volver" href="#/">← Recetas</a>
+      <article class="receta" id="receta"></article>
+    </section>
+
+    <!-- ---------- Nueva / editar ---------- -->
+    <section id="vista-editar" hidden>
+      <a class="volver" id="editar-volver" href="#/">← Cancelar</a>
+      <form class="formulario" id="form-receta" autocomplete="off">
+        <h2 id="editar-titulo">Nueva receta</h2>
+
+        <label class="campo">
+          <span class="etiqueta">Nombre</span>
+          <input type="text" id="r-titulo" maxlength="100" required placeholder="Pupusas de queso">
+        </label>
+
+        <div class="campos-dobles">
+          <label class="campo">
+            <span class="etiqueta">Porciones</span>
+            <input type="text" id="r-porciones" maxlength="30" placeholder="12">
+          </label>
+          <label class="campo">
+            <span class="etiqueta">Tiempo</span>
+            <input type="text" id="r-tiempo" maxlength="30" placeholder="45 min">
+          </label>
+        </div>
+
+        <div class="campo">
+          <span class="etiqueta">Foto</span>
+          <div class="foto-editar">
+            <img id="r-foto-vista" alt="" hidden>
+            <div class="foto-botones">
+              <label class="boton">
+                <span id="r-foto-texto">Elegir foto</span>
+                <input type="file" id="r-foto" accept="image/*" hidden>
+              </label>
+              <button type="button" class="enlace peligro" id="r-foto-quitar" hidden>Quitar foto</button>
+            </div>
+          </div>
+        </div>
+
+        <label class="campo">
+          <span class="etiqueta-fila">
+            <span class="etiqueta">Ingredientes <small>(uno por línea)</small></span>
+            <span class="dictar" data-dictar="r-ingredientes"></span>
+          </span>
+          <textarea id="r-ingredientes" rows="7" placeholder="1 libra de masa de maíz&#10;2 tazas de queso duro&#10;Sal al gusto"></textarea>
+        </label>
+
+        <label class="campo">
+          <span class="etiqueta-fila">
+            <span class="etiqueta">Pasos <small>(uno por línea; si dicen un tiempo, salen con temporizador)</small></span>
+            <span class="dictar" data-dictar="r-pasos"></span>
+          </span>
+          <textarea id="r-pasos" rows="7" placeholder="Mezclar la masa con agua y sal&#10;Rellenar con queso&#10;Cocinar en comal 4 minutos por lado"></textarea>
+        </label>
+
+        <label class="campo">
+          <span class="etiqueta">Notas</span>
+          <textarea id="r-notas" rows="3" placeholder="Servir con curtido y salsa"></textarea>
+        </label>
+
+        <div class="botones-form">
+          <button type="submit" class="boton-principal" id="r-guardar">Guardar</button>
+        </div>
+      </form>
+    </section>
+
+    <!-- ---------- Despensa ---------- -->
+    <section id="vista-despensa" hidden>
+      <form class="agregar-despensa" id="form-despensa" autocomplete="off">
+        <div class="fila-agregar">
+          <input type="text" id="d-nombre" maxlength="60" placeholder="¿Qué hay en casa?" aria-label="Producto">
+          <button type="button" class="boton escanear" id="d-escanear" aria-label="Escanear código de barras">
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 8v8M10 8v8M13 8v8M17 8v8"/></svg>
+          </button>
+        </div>
+        <div class="fila-agregar">
+          <input type="text" id="d-cantidad" maxlength="20" placeholder="Cant." aria-label="Cantidad">
+          <select id="d-lugar" aria-label="Dónde se guarda"></select>
+          <button type="submit" class="boton-principal">Agregar</button>
+        </div>
+        <p class="codigo-actual" id="d-codigo" hidden></p>
+      </form>
+      <div id="despensa"></div>
+    </section>
+  </main>
+
+  <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
+
+  <dialog class="escaner" id="escaner">
+    <div class="escaner-contenido">
+      <div class="escaner-visor">
+        <video id="escaner-video" playsinline muted></video>
+        <div class="escaner-guia" aria-hidden="true"></div>
+      </div>
+      <p class="escaner-estado" id="escaner-estado">Apunta al código de barras</p>
+      <form class="escaner-nombre" id="escaner-nombre" hidden autocomplete="off">
+        <label class="campo">
+          <span class="etiqueta" id="escaner-pregunta">No conozco este producto. ¿Cómo se llama?</span>
+          <input type="text" id="escaner-nombre-texto" maxlength="60" placeholder="Frijoles molidos Ducal">
+        </label>
+        <button type="submit" class="boton-principal">Guardar</button>
+      </form>
+      <button type="button" class="boton" id="escaner-cerrar">Cancelar</button>
+    </div>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>

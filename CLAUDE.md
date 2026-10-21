@@ -18,3 +18,12 @@ Recetario + despensa de la familia (tablet vía el hub `infra/home` y celulares)
 - Página: https://192.168.1.4/cocina/ (archivos en `/var/www/cocina/`, copiados de `web/`).
 - API: nginx publica `/cocina/api/` → `127.0.0.1:8772/api/` con `client_max_body_size` suficiente para las fotos (config en `infra/nginx`).
 - Servicio systemd de usuario `cocina.service` (copia en `servicio/`).
+
+## Página (`web/`)
+
+- Estática, sin frameworks. Navegación por hash (`#/`, `#/receta/<id>`, `#/nueva`, `#/editar/<id>`, `#/despensa`) para que el botón Atrás del celular funcione. `el()` arma el DOM (todo el texto va por `textContent`).
+- Receta: casillas por ingrediente + "Agregar marcados a la lista de compras" → `POST ../lista-compras/api/items` con el nombre y la cantidad analizados (uno por uno; avisa si alguno falló). Los pasos con `minutos` traen un enlace a `../temporizadores/?nombre=…&min=…` en pestaña nueva.
+- Foto: se reduce en el navegador (canvas, lado máx. 1280 px, JPEG 0.82) antes de `PUT`.
+- Despensa: agrupada por lugar; se revisa cada 5 s mientras se ve. "Se acabó" marca `hay=false` y además agrega el producto a la lista de compras.
+- Escáner: `BarcodeDetector` nativo si existe (Chrome Android); si no (iPhone/Safari, Firefox) carga `vendor/zxing.min.js` (@zxing/library 0.21.3, Apache 2.0, licencia en `vendor/`) y usa `BrowserMultiFormatReader.decodeFromConstraints`. Formatos EAN-13/8, UPC-A/E, Code 128. Cámara trasera (`facingMode: environment`); necesita HTTPS. Si el código no se conoce, pide el nombre y lo guarda con `POST /api/codigo/<código>`.
+- El botón 🎤 de dictado (ingredientes y pasos) usa `../voz/voz.js`; los `<span class="dictar">` del formulario son donde se ponen.
