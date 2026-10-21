@@ -29,6 +29,7 @@
         <input type="search" id="buscar" placeholder="Buscar receta…" autocomplete="off" aria-label="Buscar receta">
         <a class="boton-principal" href="#/nueva">+ Nueva</a>
       </div>
+      <button type="button" class="boton ia-boton" id="que-cocino">✨ ¿Qué cocino con lo que hay en la despensa?</button>
       <p class="vacio" id="recetas-vacio" hidden></p>
       <ul class="recetas" id="recetas"></ul>
     </section>
@@ -44,6 +45,7 @@
       <a class="volver" id="editar-volver" href="#/">← Cancelar</a>
       <form class="formulario" id="form-receta" autocomplete="off">
         <h2 id="editar-titulo">Nueva receta</h2>
+        <button type="button" class="boton ia-boton" id="importar-texto">✨ Llenar desde un texto (WhatsApp, internet…)</button>
 
         <label class="campo">
           <span class="etiqueta">Nombre</span>
@@ -123,6 +125,16 @@
   </main>
 
   <div class="aviso" id="aviso" role="status" aria-live="polite" hidden></div>
+
+  <dialog class="dialogo-ia" id="dialogo-ia">
+    <div class="dialogo-ia-contenido">
+      <h2 id="ia-titulo"></h2>
+      <div id="ia-cuerpo"></div>
+      <div class="ia-botones">
+        <button type="button" class="boton" id="ia-cerrar">Cerrar</button>
+      </div>
+    </div>
+  </dialog>
 
   <dialog class="escaner" id="escaner">
     <div class="escaner-contenido">

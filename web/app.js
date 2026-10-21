@@ -380,6 +380,172 @@
     );
   }
 
+  // ---------- IA (servicio casa/ia, modelo local) ----------
+  // Tarda entre 15 s y 1 min: se muestra un "pensando…" con los segundos que van.
+
+  const IA = "../ia/api/";
+  const dialogoIA = $("dialogo-ia");
+
+  function abrirIA(titulo, ...contenido) {
+    $("ia-titulo").textContent = titulo;
+    $("ia-cuerpo").replaceChildren(...contenido);
+    if (!dialogoIA.open) dialogoIA.showModal();
+  }
+
+  // Carga el modelo en memoria mientras la persona escribe o pega el texto
+  const precalentarIA = () => fetch(IA + "precalentar", { method: "POST" }).catch(() => {});
+
+  async function pedirIA(ruta, cuerpo) {
+    const segundos = el("span", { text: "0" });
+    $("ia-cuerpo").replaceChildren(
+      el("div", { class: "ia-espera" },
+        el("div", { class: "girando" }),
+        el("strong", { text: "Pensando…" }),
+        el("span", {}, "Puede tardar hasta un minuto · ", segundos, " s")
+      )
+    );
+    const inicio = Date.now();
+    const reloj = setInterval(() => (segundos.textContent = Math.round((Date.now() - inicio) / 1000)), 1000);
+    try {
+      return await pedir(IA + ruta, json("POST", cuerpo));
+    } finally {
+      clearInterval(reloj);
+    }
+  }
+
+  function errorIA(e, reintentar) {
+    $("ia-cuerpo").replaceChildren(
+      el("p", { text: `⚠ ${e.message === "Failed to fetch" ? "No hay conexión con el servidor." : e.message}` }),
+      el("div", { class: "ia-botones" }, el("button", { type: "button", class: "boton-principal", text: "Intentar otra vez", onclick: reintentar }))
+    );
+  }
+
+  $("ia-cerrar").addEventListener("click", () => dialogoIA.close());
+
+  // ✨ ¿Qué cocino con lo que hay?
+  async function queCocino() {
+    abrirIA("✨ ¿Qué cocino con lo que hay?");
+    let productos;
+    try {
+      productos = (await api("despensa")).items.filter((i) => i.hay).map((i) => i.nombre);
+    } catch (e) {
+      return errorIA(e, queCocino);
+    }
+    if (!productos.length) {
+      $("ia-cuerpo").replaceChildren(el("p", { text: "La despensa está vacía. Agrega primero lo que hay en casa (pestaña Despensa)." }));
+      return;
+    }
+    try {
+      const { recetas: ideas } = await pedirIA("sugerir-recetas", { despensa: productos });
+      $("ia-cuerpo").replaceChildren(
+        el("div", { class: "sugerencias" }, ...ideas.map(tarjetaSugerencia)),
+        el("p", { class: "ia-nota", text: `Con ${productos.length} productos de la despensa. Sugerencias de una IA local: revísalas antes de cocinar 🙂` }),
+        el("div", { class: "ia-botones" }, el("button", { type: "button", class: "boton", text: "Otras ideas", onclick: queCocino }))
+      );
+    } catch (e) {
+      errorIA(e, queCocino);
+    }
+  }
+
+  function tarjetaSugerencia(s) {
+    const acciones = [
+      el("button", {
+        type: "button",
+        class: "boton",
+        text: "Guardar como receta",
+        onclick: async (ev) => {
+          ev.target.disabled = true;
+          try {
+            const r = await api("recetas", json("POST", {
+              titulo: s.titulo,
+              ingredientes: s.usa,
+              pasos: [s.idea],
+              notas: "Sugerida por la IA con lo que había en la despensa.",
+            }));
+            dialogoIA.close();
+            location.hash = `#/receta/${r.id}`;
+          } catch (e) {
+            ev.target.disabled = false;
+            avisar(e.message, true);
+          }
+        },
+      }),
+    ];
+    if (s.falta.length) {
+      acciones.push(el("button", {
+        type: "button",
+        class: "boton",
+        text: "Faltantes a la lista",
+        onclick: async (ev) => {
+          ev.target.disabled = true;
+          let ok = 0;
+          for (const nombre of s.falta) {
+            try {
+              await pedir(LISTA_API + "items", json("POST", { nombre, cantidad: "" }));
+              ok++;
+            } catch {
+              /* se informa abajo */
+            }
+          }
+          avisar(ok === s.falta.length ? `${ok} ${ok === 1 ? "faltante agregado" : "faltantes agregados"} a la lista` : "No se pudo agregar todo a la lista", ok !== s.falta.length);
+        },
+      }));
+    }
+    return el("article", { class: "sugerencia" },
+      el("h3", { text: s.titulo }),
+      el("p", { text: s.idea }),
+      el("p", { class: "detalle", text: `Usa: ${s.usa.join(", ")}` }),
+      s.falta.length ? el("p", { class: "detalle", text: `Falta: ${s.falta.join(", ")}` }) : null,
+      el("div", { class: "acciones" }, ...acciones)
+    );
+  }
+
+  $("que-cocino").addEventListener("click", queCocino);
+
+  // ✨ Llenar el formulario desde un texto pegado (WhatsApp, internet…)
+  function importarTexto() {
+    const caja = el("textarea", { rows: "9", placeholder: "Pega aquí la receta tal como te la mandaron…", "aria-label": "Texto de la receta" });
+    abrirIA("✨ Llenar desde un texto",
+      el("p", { class: "ia-nota", text: "La IA separa título, ingredientes y pasos. Después puedes revisar y corregir antes de guardar." }),
+      caja,
+      el("div", { class: "ia-botones" },
+        el("button", {
+          type: "button",
+          class: "boton-principal",
+          text: "Ordenar receta",
+          onclick: async () => {
+            const texto = caja.value.trim();
+            if (!texto) return caja.focus();
+            const intentar = async () => {
+              try {
+                const r = await pedirIA("importar-receta", { texto });
+                const lleno = ["r-ingredientes", "r-pasos"].some((id) => $(id).value.trim());
+                if (lleno && !confirm("El formulario ya tiene ingredientes o pasos. ¿Reemplazarlos con lo de la IA?")) {
+                  dialogoIA.close();
+                  return;
+                }
+                if (r.titulo) $("r-titulo").value = r.titulo;
+                if (r.porciones) $("r-porciones").value = r.porciones;
+                if (r.tiempo) $("r-tiempo").value = r.tiempo;
+                $("r-ingredientes").value = r.ingredientes.join("\n");
+                $("r-pasos").value = r.pasos.join("\n");
+                dialogoIA.close();
+                avisar("Listo: revisa la receta y toca Guardar");
+              } catch (e) {
+                errorIA(e, intentar);
+              }
+            };
+            intentar();
+          },
+        })
+      )
+    );
+    caja.focus();
+    precalentarIA();
+  }
+
+  $("importar-texto").addEventListener("click", importarTexto);
+
   // ---------- Despensa ----------
 
   let despensa = { version: -1, items: [], lugares: [] };

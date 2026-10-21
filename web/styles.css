@@ -237,6 +237,38 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--acento); ou
 }
 .aviso.error { background: var(--peligro); }
 
+/* ---------- IA ---------- */
+
+.ia-boton { width: 100%; margin-bottom: 14px; background: #efe6fb; color: #6a3fb5; white-space: normal; }
+.formulario .ia-boton { margin-bottom: 0; }
+
+.dialogo-ia {
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 20px;
+  border: none;
+  border-radius: 20px;
+  background: var(--superficie);
+  color: var(--tinta);
+  box-shadow: 0 20px 50px rgba(0,0,0,.25);
+}
+.dialogo-ia::backdrop { background: rgba(30, 20, 10, .45); }
+.dialogo-ia-contenido { display: grid; gap: 14px; }
+.dialogo-ia h2 { margin: 0; font-size: 1.25rem; }
+.dialogo-ia textarea { width: 100%; padding: 12px 14px; border: 1px solid var(--linea); border-radius: 12px; background: var(--fondo); resize: vertical; }
+.ia-botones { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 10px; }
+.ia-espera { display: grid; justify-items: center; gap: 10px; padding: 20px 0; color: var(--tinta-suave); text-align: center; }
+.ia-espera .girando { width: 36px; height: 36px; border: 4px solid #e4d6f7; border-top-color: #6a3fb5; border-radius: 50%; animation: girar 1s linear infinite; }
+@keyframes girar { to { transform: rotate(360deg); } }
+@media (prefers-reduced-motion: reduce) { .ia-espera .girando { animation: none; } }
+.sugerencias { display: grid; gap: 12px; }
+.sugerencia { display: grid; gap: 8px; padding: 14px; border-radius: 16px; background: var(--fondo); }
+.sugerencia h3 { margin: 0; font-size: 1.1rem; }
+.sugerencia p { margin: 0; }
+.sugerencia .detalle { font-size: 0.9rem; color: var(--tinta-suave); }
+.sugerencia .acciones { display: flex; flex-wrap: wrap; gap: 8px; }
+.ia-nota { margin: 0; font-size: 0.85rem; color: var(--tinta-suave); }
+
 /* ---------- Escáner ---------- */
 
 .escaner {
