@@ -350,6 +350,36 @@
     }
   });
 
+  // 🎤 dictar ingredientes ("dos tazas de harina, tres huevos y sal") y pasos (cada oración, un paso)
+  function agregarLineas(id, nuevas) {
+    const caja = $(id);
+    const actual = caja.value.replace(/\s+$/, "");
+    caja.value = [actual, ...nuevas].filter(Boolean).join("\n");
+    caja.scrollTop = caja.scrollHeight;
+  }
+
+  if (window.Voz) {
+    document.querySelector('[data-dictar="r-ingredientes"]').append(
+      Voz.boton({
+        modo: "lista",
+        etiqueta: "Dictar ingredientes",
+        alTerminar: ({ items = [] }) =>
+          agregarLineas("r-ingredientes", items.map(({ nombre, cantidad }) =>
+            cantidad ? `${cantidad} ${nombre[0].toLowerCase()}${nombre.slice(1)}` : nombre)),
+        alError: (m) => avisar(m, true),
+      })
+    );
+    document.querySelector('[data-dictar="r-pasos"]').append(
+      Voz.boton({
+        modo: "texto",
+        etiqueta: "Dictar pasos",
+        alTerminar: ({ texto }) =>
+          agregarLineas("r-pasos", texto.split(/(?<=[.!?])\s+/).map((p) => p.trim()).filter(Boolean)),
+        alError: (m) => avisar(m, true),
+      })
+    );
+  }
+
   // ---------- Despensa ----------
 
   let despensa = { version: -1, items: [], lugares: [] };

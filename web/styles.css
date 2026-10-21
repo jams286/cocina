@@ -161,6 +161,7 @@ h1 { margin: 0; font-size: 1.8rem; }
 .etiqueta { font-size: 0.9rem; font-weight: 700; color: var(--tinta-suave); }
 .etiqueta small { font-weight: 400; }
 .etiqueta-fila { display: flex; align-items: end; justify-content: space-between; gap: 10px; }
+.dictar .voz-boton { min-height: 40px; }
 .campos-dobles { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 
 .formulario input[type="text"], .formulario textarea, .agregar-despensa input, .agregar-despensa select, .escaner input {
