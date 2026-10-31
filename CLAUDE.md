@@ -1,5 +1,7 @@
 # cocina (casa)
 
+Tracker: cocina
+
 Recetario + despensa de la familia (tablet vía el hub `infra/home` y celulares).
 
 ## Servidor (`servidor.py`)
