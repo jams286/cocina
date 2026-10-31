@@ -139,7 +139,8 @@
       onclick: () => mandarALista(r, casillas, botonLista),
     });
 
-    caja.replaceChildren(
+    // replaceChildren convierte un null en el texto "null": las partes que faltan se quitan antes
+    caja.replaceChildren(...[
       r.foto ? el("img", { class: "receta-foto", src: urlFoto(r), alt: "" }) : null,
       el("div", {},
         el("h2", { text: r.titulo }),
@@ -197,7 +198,7 @@
           },
         })
       )
-    );
+    ].filter(Boolean));
   }
 
   async function mandarALista(receta, casillas, boton) {
