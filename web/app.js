@@ -118,26 +118,49 @@
 
   // ---------- Una receta ----------
 
-  async function verReceta(id) {
+  // "8 hamburguesas" con 16 -> "16 hamburguesas"; "4" -> "4 porciones"
+  function textoPorciones(r) {
+    if (!r.porciones_base) return `${r.porciones} porciones`;
+    const t = r.porciones.replace(/\d+/, r.porciones_ver);
+    return /^\d+$/.test(r.porciones.trim()) ? `${t} porciones` : t;
+  }
+
+  // porciones: para cuántas se quiere cocinar (el servidor escala los ingredientes)
+  async function verReceta(id, porciones) {
     mostrarVista("receta");
     const caja = $("receta");
-    caja.replaceChildren(el("p", { class: "vacio", text: "Cargando…" }));
+    const mismaReceta = Number(caja.dataset.id) === id && porciones;
+    if (!mismaReceta) caja.replaceChildren(el("p", { class: "vacio", text: "Cargando…" }));
     let r;
     try {
-      r = await api(`recetas/${id}`);
+      r = await api(`recetas/${id}${porciones ? `?porciones=${porciones}` : ""}`);
     } catch (e) {
       caja.replaceChildren(el("p", { class: "vacio", text: e.message }));
       return;
     }
+    caja.dataset.id = id;
     document.title = `${r.titulo} · Cocina`;
 
-    const casillas = r.ingredientes.map((ing) => el("input", { type: "checkbox", checked: true }));
     const botonLista = el("button", {
       type: "button",
-      class: "boton-principal",
-      text: "🛒 Agregar marcados a la lista de compras",
-      onclick: () => mandarALista(r, casillas, botonLista),
+      class: "boton boton-ancho",
+      text: "🛒 Mandar a la lista de compras…",
+      onclick: () => abrirHojaLista(r),
     });
+
+    const cambiarPorciones = (delta) => {
+      const n = r.porciones_ver + delta;
+      if (n >= 1 && n <= 100) verReceta(r.id, n);
+    };
+    const chipPorciones = !r.porciones
+      ? null
+      : r.porciones_base
+        ? el("span", { class: "chip chip-porciones" },
+            el("button", { type: "button", class: "paso-porcion", "aria-label": "Menos porciones", text: "−", onclick: () => cambiarPorciones(-1) }),
+            el("span", { text: `🍽 ${textoPorciones(r)}` }),
+            el("button", { type: "button", class: "paso-porcion", "aria-label": "Más porciones", text: "+", onclick: () => cambiarPorciones(1) })
+          )
+        : el("span", { class: "chip", text: `🍽 ${r.porciones} porciones` });
 
     // replaceChildren convierte un null en el texto "null": las partes que faltan se quitan antes
     caja.replaceChildren(...[
@@ -146,14 +169,21 @@
         el("h2", { text: r.titulo }),
         el("div", { class: "chips" },
           r.tiempo ? el("span", { class: "chip", text: `⏱ ${r.tiempo}` }) : null,
-          r.porciones ? el("span", { class: "chip", text: `🍽 ${r.porciones} porciones` }) : null
-        )
+          chipPorciones
+        ),
+        r.porciones_ver !== r.porciones_base
+          ? el("p", { class: "nota-porciones" },
+              `Cantidades para ${r.porciones_ver} (la receta es para ${r.porciones_base}). `,
+              el("button", { type: "button", class: "enlace", text: "Volver a la original", onclick: () => verReceta(r.id, r.porciones_base) }))
+          : null
       ),
       r.ingredientes.length
         ? el("section", { class: "bloque" },
             el("h3", { text: "Ingredientes" }),
             el("ul", { class: "ingredientes" },
-              ...r.ingredientes.map((ing, i) => el("li", {}, el("label", {}, casillas[i], el("span", { text: ing.texto }))))
+              ...r.ingredientes.map((ing) => el("li", {},
+                el("span", { text: ing.texto }),
+                ing.derivado ? el("span", { class: "derivado", text: "sale de otro ingrediente" }) : null))
             ),
             botonLista
           )
@@ -201,25 +231,83 @@
     ].filter(Boolean));
   }
 
+  // "hoy a las 14:30", "ayer a las 9:05", "el 3 nov a las 18:00"
+  function cuando(iso) {
+    const f = new Date(iso);
+    const hora = f.toLocaleTimeString("es", { hour: "numeric", minute: "2-digit" });
+    const dia = (d) => new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+    const dias = Math.round((dia(new Date()) - dia(f)) / 86400000);
+    if (dias === 0) return `hoy a las ${hora}`;
+    if (dias === 1) return `ayer a las ${hora}`;
+    return `el ${f.toLocaleDateString("es", { day: "numeric", month: "short" })} a las ${hora}`;
+  }
+
+  // 🛒 Hoja para elegir qué ingredientes mandar: así un toque por error no manda nada
+  const hojaLista = $("hoja-lista");
+  $("hoja-lista-cancelar").addEventListener("click", () => hojaLista.close());
+  hojaLista.addEventListener("click", (e) => {
+    if (e.target === hojaLista) hojaLista.close();
+  });
+
+  function abrirHojaLista(r) {
+    const casillas = r.ingredientes.map((ing) => el("input", { type: "checkbox", checked: !ing.derivado }));
+    const confirmar = $("hoja-lista-agregar");
+    const contar = () => {
+      const n = casillas.filter((c) => c.checked).length;
+      confirmar.textContent = n ? `Agregar ${n}` : "Agregar";
+      confirmar.disabled = !n;
+    };
+    casillas.forEach((c) => c.addEventListener("change", contar));
+    contar();
+
+    $("hoja-lista-subtitulo").textContent = r.porciones_base ? `${r.titulo} · para ${r.porciones_ver}` : r.titulo;
+    const aviso = $("hoja-lista-aviso");
+    aviso.hidden = !r.enviada_en;
+    if (r.enviada_en) {
+      aviso.textContent = `⚠ Esta receta ya se mandó ${cuando(r.enviada_en)}${r.enviada_porciones ? ` (para ${r.enviada_porciones})` : ""}. Si la mandas otra vez, las cantidades se suman.`;
+    }
+    $("hoja-lista-items").replaceChildren(
+      ...r.ingredientes.map((ing, i) =>
+        el("li", {},
+          el("label", {},
+            casillas[i],
+            el("span", { class: "hoja-item-nombre" },
+              ing.compra.nombre,
+              ing.derivado ? el("small", { text: "sale de otro ingrediente" }) : null),
+            ing.compra.cantidad ? el("span", { class: "chip", text: ing.compra.cantidad }) : null
+          )
+        )
+      )
+    );
+    confirmar.onclick = () => mandarALista(r, casillas, confirmar);
+    hojaLista.showModal();
+  }
+
   async function mandarALista(receta, casillas, boton) {
     const elegidos = receta.ingredientes.filter((_, i) => casillas[i].checked);
-    if (!elegidos.length) {
-      avisar("Marca al menos un ingrediente", true);
-      return;
-    }
+    if (!elegidos.length) return;
     boton.disabled = true;
     let ok = 0;
     for (const ing of elegidos) {
       try {
-        await pedir(LISTA_API + "items", json("POST", { nombre: ing.nombre, cantidad: ing.cantidad }));
+        await pedir(LISTA_API + "items", json("POST", ing.compra));
         ok++;
       } catch {
         /* se informa abajo */
       }
     }
     boton.disabled = false;
+    if (ok) {
+      try {
+        await api(`recetas/${receta.id}/enviada`, json("POST", { porciones: receta.porciones_ver }));
+      } catch {
+        /* solo es el aviso de "ya se mandó" */
+      }
+    }
+    hojaLista.close();
     if (ok === elegidos.length) avisar(`${ok} ${ok === 1 ? "ingrediente agregado" : "ingredientes agregados"} a la lista de compras`);
     else avisar(`Se agregaron ${ok} de ${elegidos.length}. Revisa la conexión.`, true);
+    verReceta(receta.id, receta.porciones_ver);
   }
 
   // ---------- Nueva / editar ----------

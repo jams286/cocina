@@ -301,3 +301,28 @@ input:focus, textarea:focus, select:focus { outline: 2px solid var(--acento); ou
   .fila-agregar:nth-child(2) .boton-principal { grid-column: 1 / -1; }
   h1 { font-size: 1.5rem; }
 }
+
+/* ---------- Porciones y mandar a la lista ---------- */
+
+.chip-porciones { display: inline-flex; align-items: center; gap: 4px; padding: 2px 4px; }
+.paso-porcion {
+  width: 34px; height: 34px;
+  border: none; border-radius: 50%;
+  background: var(--superficie); color: var(--acento);
+  font-size: 1.2rem; font-weight: 700; line-height: 1;
+}
+.nota-porciones { margin: 8px 0 0; font-size: 0.9rem; color: var(--tinta-suave); }
+.nota-porciones .enlace { font-size: inherit; }
+.ingredientes li { padding: 8px 0; border-bottom: 1px solid var(--linea); }
+.ingredientes li:last-child { border-bottom: none; }
+.derivado { display: block; font-size: 0.8rem; color: var(--tinta-suave); }
+.boton-ancho { width: 100%; margin-top: 4px; white-space: normal; text-align: center; }
+
+.hoja-lista-aviso { margin: 0; padding: 10px 12px; border-radius: 12px; background: #fff4d6; color: #7a5300; font-weight: 700; font-size: 0.95rem; }
+.hoja-lista-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 2px; max-height: 55dvh; overflow-y: auto; }
+.hoja-lista-items label { display: flex; align-items: center; gap: 12px; padding: 9px 2px; }
+.hoja-lista-items input { width: 22px; height: 22px; flex: none; accent-color: var(--acento); }
+.hoja-item-nombre { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.hoja-item-nombre small { display: block; color: var(--tinta-suave); }
+.hoja-lista .chip { flex: none; }
+.hoja-lista-agregar:disabled { opacity: .6; }

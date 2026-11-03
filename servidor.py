@@ -11,7 +11,8 @@ la lista de compras (/lista-compras/api/) y los temporizadores (/temporizadores/
 Rutas:
     GET    /api/recetas                     resumen de todas (sin fotos)
     POST   /api/recetas                     {"titulo", "porciones", "tiempo", "ingredientes": [..], "pasos": [..], "notas"}
-    GET    /api/recetas/<id>                completa; ingredientes y pasos ya analizados
+    GET    /api/recetas/<id>[?porciones=N]  completa; ingredientes (escalados a N porciones) y pasos ya analizados
+    POST   /api/recetas/<id>/enviada        {"porciones"?}  anota que se mandó a la lista de compras
     PATCH  /api/recetas/<id>                mismos campos que POST
     DELETE /api/recetas/<id>
     PUT    /api/recetas/<id>/foto           cuerpo = imagen JPEG/PNG/WebP (la página la reduce antes)
@@ -30,12 +31,15 @@ import os
 import re
 import sqlite3
 import threading
+import unicodedata
 import urllib.error
 import urllib.request
 from datetime import datetime
+from fractions import Fraction
+from math import ceil
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import parse_qs, quote, urlsplit
 
 HOST = '127.0.0.1'
 # Se pueden cambiar para pruebas sin tocar los datos reales
@@ -94,6 +98,11 @@ def preparar_bd():
             CREATE TABLE IF NOT EXISTS meta (clave TEXT PRIMARY KEY, valor INTEGER NOT NULL);
             INSERT OR IGNORE INTO meta (clave, valor) VALUES ('version', 0);
         ''')
+        columnas = {f[1] for f in con.execute('PRAGMA table_info(recetas)')}
+        if 'enviada_en' not in columnas:
+            # Cuándo y para cuántas porciones se mandó por última vez a la lista de compras
+            con.execute('ALTER TABLE recetas ADD COLUMN enviada_en TEXT')
+            con.execute('ALTER TABLE recetas ADD COLUMN enviada_porciones INTEGER')
 
 
 def ahora():
@@ -140,20 +149,141 @@ def analizar_ingrediente(texto):
     # "Sal al gusto", "Aceite (opcional)"
     t = re.sub(r'\s*(,\s*)?\(?(al gusto|opcional|c/n|cantidad necesaria)\)?\s*$', '', t, flags=re.IGNORECASE)
 
-    cantidad = ''
+    cantidad = unidad = ''
     m = re.match(rf'^(?P<num>{NUMERO}|{"|".join(PALABRAS_NUM)})\s+(?P<resto>.+)$', t, flags=re.IGNORECASE)
     if m:
         num = PALABRAS_NUM.get(m['num'].lower(), m['num'])
         resto = m['resto']
         u = re.match(rf'^(?P<unidad>{UNIDADES})(?:\s+de)?\s+(?P<nombre>.+)$', resto, flags=re.IGNORECASE)
         if u:
-            cantidad, nombre = f"{num} {u['unidad']}", u['nombre']
+            unidad, nombre = u['unidad'], u['nombre']
+            cantidad = f"{num} {unidad}"
         else:
             cantidad, nombre = num, re.sub(r'^de\s+', '', resto, flags=re.IGNORECASE)
+        nombre = re.sub(r'^del\s+', '', nombre, flags=re.IGNORECASE)    # "1 cucharada del adobo"
     else:
         nombre = t
     nombre = nombre.strip(' ,.;:') or texto
-    return {'texto': texto, 'nombre': nombre[0].upper() + nombre[1:], 'cantidad': cantidad}
+    return {'texto': texto, 'nombre': nombre[0].upper() + nombre[1:], 'cantidad': cantidad,
+            'num': leer_numero(num) if m else None, 'unidad': unidad}
+
+
+def leer_numero(texto):
+    """'1 1/2' -> Fraction(3, 2); '0,5' -> Fraction(1, 2)."""
+    partes = texto.replace(',', '.').split()
+    try:
+        return sum((Fraction(p) for p in partes), Fraction(0))
+    except (ValueError, ZeroDivisionError):
+        return None
+
+
+def escribir_numero(n):
+    if n.denominator == 1:
+        return str(n.numerator)
+    if n.denominator in (2, 3, 4):
+        entero, resto = divmod(n.numerator, n.denominator)
+        return f'{entero} {resto}/{n.denominator}' if entero else f'{resto}/{n.denominator}'
+    return f'{float(n):.2f}'.rstrip('0').rstrip('.')
+
+
+def _sin_tildes(texto):
+    return ''.join(c for c in unicodedata.normalize('NFD', texto) if unicodedata.category(c) != 'Mn')
+
+
+def plural(palabra):
+    """Plural sencillo: taza -> tazas, limón -> limones, nuez -> nueces. Las abreviaturas (g, kg, ml) no cambian."""
+    if len(palabra) <= 2 or palabra.endswith('.') or palabra[-1] in 'sS':
+        return palabra
+    if palabra.endswith('z'):
+        return palabra[:-1] + 'ces'
+    if palabra[-1] in 'aeiouáéíóú':
+        return palabra + 's'
+    base = palabra[:-2] + _sin_tildes(palabra[-2:]) if palabra[-2] in 'áéíóú' else palabra   # limón -> limon
+    return base + 'es'
+
+
+def singular(palabra):
+    """latas -> lata, unidades -> unidad (para unidades escritas en plural con cantidad 1)."""
+    if len(palabra) <= 3 or not palabra.endswith('s'):
+        return palabra
+    return palabra[:-2] if palabra.endswith('des') else palabra[:-1]
+
+
+def _clave_unidad(unidad):
+    return singular(_sin_tildes(unidad.lower()).rstrip('.'))
+
+
+# Medidas de cocina: no se compran así, se compra el producto ("1/2 taza de mayonesa" -> "Mayonesa")
+MEDIDAS_COCINA = {'taza', 'cucharada', 'cucharadita', 'cda', 'cdas', 'cdta', 'cdtas', 'pizca', 'hoja', 'ramita',
+                  'rodaja', 'rebanada', 'vaso', 'chorrito', 'puñado', 'diente'}
+PESOS = {'g', 'gr', 'gramo', 'kg', 'kilo', 'libra', 'lb', 'lbs', 'onza', 'oz', 'ml', 'mililitro', 'litro', 'l'}
+
+
+def comprable(ing, factor=Fraction(1)):
+    """Lo que se manda a la lista: medidas de cocina sin cantidad, pesos tal cual, piezas redondeadas hacia arriba."""
+    nombre, num, unidad = ing['nombre'], ing['num'], ing['unidad']
+    if num is None:
+        return {'nombre': nombre, 'cantidad': ''}
+    n = num * factor
+    u = _clave_unidad(unidad) if unidad else ''
+    if u in MEDIDAS_COCINA:
+        return {'nombre': nombre, 'cantidad': ''}
+    if u in PESOS:
+        if u in ('g', 'gr', 'gramo', 'ml', 'mililitro'):
+            n = Fraction(ceil(n))
+            if n >= 1000:   # 1000 g -> 1 kg, 1500 ml -> 1 1/2 l
+                n, unidad = n / 1000, 'kg' if u != 'ml' and u != 'mililitro' else 'l'
+        return {'nombre': nombre, 'cantidad': f'{escribir_numero(n)} {singular(unidad) if n <= 1 else plural(unidad)}'}
+    piezas = max(1, ceil(n))
+    return {'nombre': nombre, 'cantidad': f'{piezas} {singular(unidad) if piezas == 1 else plural(unidad)}'.strip()}
+
+
+def escalar(ing, factor):
+    """El texto del ingrediente con la cantidad multiplicada: '1/2 taza de mayonesa' x2 -> '1 taza de mayonesa'."""
+    if factor == 1 or ing['num'] is None:
+        return ing['texto'], ing['cantidad']
+    n = ing['num'] * factor
+    numero = escribir_numero(n)
+    if ing['unidad']:
+        u = _clave_unidad(ing['unidad'])
+        if u in ('g', 'gr', 'gramo', 'ml', 'mililitro') and n >= 1000:   # 1000 g -> 1 kg
+            n, ing = n / 1000, {**ing, 'unidad': 'l' if u in ('ml', 'mililitro') else 'kg'}
+            numero = escribir_numero(n)
+        unidad = singular(ing['unidad']) if n <= 1 else plural(ing['unidad'])
+        cantidad = f'{numero} {unidad}'
+        resto = ing['nombre'][0].lower() + ing['nombre'][1:]
+        return f'{cantidad} de {resto}', cantidad
+    # Sin unidad, la primera palabra es la cosa: "1 tomate" x2 -> "2 tomates"
+    palabras = (ing['nombre'][0].lower() + ing['nombre'][1:]).split(' ', 1)
+    if n > 1:
+        palabras[0] = plural(palabras[0])
+    return f"{numero} {' '.join(palabras)}", numero
+
+
+def _raices(texto):
+    t = _sin_tildes(texto.lower())
+    return {re.sub(r'(es|s)$', '', w) for w in re.findall(r'[a-zñ]{4,}', t)}
+
+
+RE_DERIVADO = re.compile(r'\b(?:de la lata|del frasco|de la cocci[oó]n|reservad[oa]s?)\b', re.IGNORECASE)
+RE_DE_OTRO = re.compile(r'\b(?:del|de la|de las|de los)\s+(.+)$', re.IGNORECASE)
+
+
+def es_derivado(ing, otros):
+    """'Jugo de los pepinillos', 'adobo de la lata': sale de otro ingrediente, no se compra aparte."""
+    if RE_DERIVADO.search(ing['texto']):
+        return True
+    m = RE_DE_OTRO.search(ing['nombre'])
+    if not m:
+        return False
+    cola = _raices(m[1])
+    return any(cola & _raices(o['nombre']) for o in otros if o is not ing)
+
+
+def numero_porciones(texto):
+    """'8 hamburguesas' -> 8; 'para 4' -> 4; sin número -> None."""
+    m = re.search(r'\d+', texto or '')
+    return int(m[0]) if m and int(m[0]) > 0 else None
 
 
 def analizar_paso(texto):
@@ -187,17 +317,31 @@ def listar_recetas():
         return {'version': version(con), 'recetas': [fila_resumen(f) for f in filas]}
 
 
-def leer_receta(con, receta_id):
+def leer_receta(con, receta_id, porciones=None):
     f = con.execute('''
         SELECT id, titulo, porciones, tiempo, ingredientes, pasos, notas,
-               foto IS NOT NULL AS tiene_foto, actualizada
+               foto IS NOT NULL AS tiene_foto, actualizada, enviada_en, enviada_porciones
         FROM recetas WHERE id = ?
     ''', (receta_id,)).fetchone()
     if not f:
         raise LookupError('Esa receta ya no existe')
     receta = fila_resumen(f)
     receta['notas'] = f['notas']
-    receta['ingredientes'] = [analizar_ingrediente(t) for t in json.loads(f['ingredientes'])]
+    receta['enviada_en'] = f['enviada_en']
+    receta['enviada_porciones'] = f['enviada_porciones']
+    # Porciones: las de la receta (base) y para cuántas se quiere cocinar (escala los ingredientes)
+    base = numero_porciones(f['porciones'])
+    ver = porciones if base and porciones and 1 <= porciones <= 100 else base
+    factor = Fraction(ver, base) if base else Fraction(1)
+    receta['porciones_base'], receta['porciones_ver'] = base, ver
+    ingredientes = [analizar_ingrediente(t) for t in json.loads(f['ingredientes'])]
+    for ing in ingredientes:
+        ing['derivado'] = es_derivado(ing, ingredientes)
+    for ing in ingredientes:
+        ing['texto'], ing['cantidad'] = escalar(ing, factor)
+        ing['compra'] = comprable(ing, factor)
+        del ing['num'], ing['unidad']
+    receta['ingredientes'] = ingredientes
     receta['pasos'] = [analizar_paso(t) for t in json.loads(f['pasos'])]
     return receta
 
@@ -245,6 +389,22 @@ def cambiar_receta(receta_id, datos):
             raise LookupError('Esa receta ya no existe')
         subir_version(con)
         return leer_receta(con, receta_id)
+
+
+def marcar_enviada(receta_id, datos):
+    porciones = datos.get('porciones')
+    porciones = porciones if isinstance(porciones, int) and 1 <= porciones <= 100 else None
+    with candado, conectar() as con:
+        cur = con.execute('UPDATE recetas SET enviada_en = ?, enviada_porciones = ? WHERE id = ?',
+                          (ahora(), porciones, receta_id))
+        if not cur.rowcount:
+            raise LookupError('Esa receta ya no existe')
+        return leer_receta(con, receta_id, porciones)
+
+
+def porciones_pedidas(handler):
+    valor = parse_qs(urlsplit(handler.path).query).get('porciones', [''])[0]
+    return int(valor) if valor.isdigit() else None
 
 
 def borrar_receta(receta_id):
@@ -425,7 +585,8 @@ def guardar_codigo(codigo, datos):
 RUTAS = [
     ('GET',    r'/api/recetas',               lambda m, h: listar_recetas()),
     ('POST',   r'/api/recetas',               lambda m, h: crear_receta(h.leer_json())),
-    ('GET',    r'/api/recetas/(\d+)',         lambda m, h: leer_receta(conectar(), int(m[1]))),
+    ('GET',    r'/api/recetas/(\d+)',         lambda m, h: leer_receta(conectar(), int(m[1]), porciones_pedidas(h))),
+    ('POST',   r'/api/recetas/(\d+)/enviada', lambda m, h: marcar_enviada(int(m[1]), h.leer_json())),
     ('PATCH',  r'/api/recetas/(\d+)',         lambda m, h: cambiar_receta(int(m[1]), h.leer_json())),
     ('DELETE', r'/api/recetas/(\d+)',         lambda m, h: borrar_receta(int(m[1]))),
     ('PUT',    r'/api/recetas/(\d+)/foto',    lambda m, h: guardar_foto(int(m[1]), h.leer_cuerpo(MAX_FOTO))),

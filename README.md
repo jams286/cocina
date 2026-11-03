@@ -1,6 +1,6 @@
 # cocina
 
-Recetario y despensa de la casa. Las recetas mandan sus ingredientes a la lista de compras y abren temporizadores desde los pasos; la despensa se llena escaneando códigos de barras y lo que se acaba pasa a la lista de compras.
+Recetario y despensa de la casa. Las recetas mandan sus ingredientes a la lista de compras (en cantidades que se pueden comprar y para las porciones que elijas) y abren temporizadores desde los pasos; la despensa se llena escaneando códigos de barras y lo que se acaba pasa a la lista de compras.
 
 - Página: https://192.168.1.4/cocina/
 - Datos: `~/.local/share/casa/cocina.db` (SQLite, fotos incluidas; entra en el respaldo diario de `infra/respaldos`)
@@ -10,6 +10,7 @@ Recetario y despensa de la casa. Las recetas mandan sus ingredientes a la lista 
 - `web/`: página estática que se publica en `/var/www/cocina/`.
 - `servidor.py`: API JSON (solo Python estándar + SQLite) en `127.0.0.1:8772`. nginx publica `/cocina/api/` → `/api/`.
 - `servicio/cocina.service`: servicio systemd de usuario.
+- `test_servidor.py`: pruebas (`python3 -m unittest -v`).
 
 ## Comandos
 
